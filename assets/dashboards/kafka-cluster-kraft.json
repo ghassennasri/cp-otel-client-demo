@@ -8278,7 +8278,8 @@
         "tagValuesQuery": "",
         "tagsQuery": "",
         "type": "query",
-        "useTags": false
+        "useTags": false,
+        "allValue": ".*"
       },
       {
         "allValue": "",

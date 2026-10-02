@@ -17,7 +17,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Inventory group -> (component name used in labels/logs, Prometheus job name).
 GROUPS = {
     'kafka_broker': ('kafka-broker', 'kafka-broker'),
-    'kafka_controller': ('kafka-controller', 'kafka_controller'),
+    'kafka_controller': ('kafka-controller', 'kafka-controller'),
     'schema_registry': ('schema-registry', 'schema-registry'),
     'kafka_connect': ('kafka-connect', 'kafka-connect'),
 }

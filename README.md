@@ -184,7 +184,8 @@ exporters:
 The **Confluent dashboards** from
 [jmx-monitoring-stacks](https://github.com/confluentinc/jmx-monitoring-stacks) need the same
 metric names and the `env`, `job` and `instance` labels as before. The settings above keep them,
-so the dashboards are used **without modification**. Only their data source is set to VictoriaMetrics.
+so the dashboards keep their **original PromQL queries**. Only their data source is set to
+VictoriaMetrics (and one variable is adjusted for dedicated KRaft controllers, see [NOTICE.md](NOTICE.md)).
 
 **See it**
 
@@ -197,6 +198,10 @@ so the dashboards are used **without modification**. Only their data source is s
   kafka_server_replicamanager_underreplicatedpartitions{env="demo"}
   sum(rate(kafka_server_brokertopicmetrics_bytesinpersec{env="demo",topic="demo-orders"}[5m]))
   ```
+
+*Confluent "Kafka cluster" dashboard, unchanged queries, fed by JMX Exporter → OTel → VictoriaMetrics:*
+
+![Kafka cluster dashboard in Grafana](docs/images/grafana-kafka-cluster.png)
 
 ### 3.2 Confluent Platform logs (phase 2)
 
@@ -235,6 +240,14 @@ CP log directory with ACLs, and these ACLs stay valid after log rotation.
 The smoke test writes a clearly marked synthetic error on every host. Search `OTEL_DEMO_` to see a
 multiline record with its stack trace.
 
+*Confluent Platform logs from all hosts in OpenSearch Discover, with host, component and severity:*
+
+![Confluent Platform logs in OpenSearch Discover](docs/images/opensearch-cp-logs.png)
+
+*A Java stack trace is kept as one log record (multiline), with its parsed timestamp and severity:*
+
+![Multiline log record in OpenSearch](docs/images/opensearch-multiline.png)
+
 ### 3.3 Existing KMinion
 
 **KMinion does not need to change.** If it already sends metrics to VictoriaMetrics, keep that flow:
@@ -271,6 +284,10 @@ Application
 
 **See it**: `./scripts/customer-traffic.sh` (or `make traces`), then open the Grafana dashboard
 **Customer Application Observability**. Details: [docs/APPLICATION-OBSERVABILITY.md](docs/APPLICATION-OBSERVABILITY.md).
+
+*Application metrics (custom MBean, JVM, Kafka clients) and traces (Tempo) in one dashboard:*
+
+![Customer Application Observability dashboard](docs/images/grafana-customer-app.png)
 
 ### 3.5 Kafka client telemetry with KIP-714 (phase 4)
 
@@ -309,6 +326,10 @@ kafka-client-metrics --bootstrap-server broker1:9092 --alter --name kip714-demo 
 **See it**: `./scripts/kip714-status.sh` (or `make kip714-status`), then open the Grafana dashboard
 **Kafka Client Telemetry (KIP-714)**. The series are named `org_apache_kafka_producer_*` and
 `org_apache_kafka_consumer_*`, with `client_id` and `client_instance_id` labels.
+
+*Broker plugin counters and the metrics pushed by the producer and the consumer themselves:*
+
+![Kafka Client Telemetry (KIP-714) dashboard](docs/images/grafana-kip714.png)
 
 > The broker plugin is **demo code**: plaintext gRPC, an in-memory queue and no retry. It is built
 > against the Kafka 4.3 plugin API (CP 8.3). Details: [docs/KIP-714.md](docs/KIP-714.md).
@@ -454,6 +475,7 @@ docker exec cp-otel-broker1 curl -s http://localhost:8080/metrics | head   # JMX
 | No logs in Discover | Use the time range *Last 15 minutes* and index pattern `cp-logs-*`. Then check `journalctl -u otelcol-contrib` on the host and `docker compose logs data-prepper`. |
 | Gateway logs "Exporting failed ... data-prepper" | Data Prepper is down or full. The gateway retries from its persistent queue. Check `docker compose logs data-prepper`. |
 | Brokers write `libzstd-jni ... Unsupported OS/arch` | `/tmp` is mounted `noexec`. `compose.yml` mounts it with `exec`; keep that if you change the file. |
+| Data Prepper logs `index ... blocked by: [TOO_MANY_REQUESTS ... flood-stage watermark]` | The VM disk is more than 95 % full, so OpenSearch stops writes. Free disk space (`df -h /`, `docker system df`), then unblock: `curl -XPUT localhost:9200/_all/_settings -H 'Content-Type: application/json' -d '{"index.blocks.read_only_allow_delete": null}'`. Queued logs are then delivered. |
 | No KIP-714 series | Run `./scripts/kip714-status.sh`. `received` must grow. If `failed` grows, read `grep KIP-714 /var/log/kafka/server.log` on a broker. |
 
 ---

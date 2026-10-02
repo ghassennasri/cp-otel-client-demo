@@ -14,6 +14,7 @@ Requires PyYAML and Jinja2 (tests/requirements.txt). Run: python3 tests/check-st
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 
 import jinja2
@@ -26,7 +27,7 @@ EXCLUDED_DIRS = {'.venv', '.git', '.github', '__pycache__', 'artifacts', 'target
 # Job names match what the upstream Confluent dashboards expect.
 COMPONENTS = {
     'kafka_broker': ('kafka-broker', 'kafka-broker'),
-    'kafka_controller': ('kafka-controller', 'kafka_controller'),
+    'kafka_controller': ('kafka-controller', 'kafka-controller'),
     'schema_registry': ('schema-registry', 'schema-registry'),
     'kafka_connect': ('kafka-connect', 'kafka-connect'),
 }
@@ -91,6 +92,10 @@ def check_dashboards():
         assert '__inputs' not in json.loads(text), path.name
         assert '${Prometheus}' not in text, path.name
         assert 'cp-victoriametrics' in text, path.name
+        # Every job="..." filter in a dashboard must be a job that the demo really produces.
+        known_jobs = {job for _, job in COMPONENTS.values()} | {'customer-observability-demo'}
+        used_jobs = set(re.findall(r'job=\\"([^"\\]+)\\"', text))
+        assert used_jobs <= known_jobs, f'{path.name}: unknown job labels {sorted(used_jobs - known_jobs)}'
 
 
 def check_demo_apps():

@@ -23,7 +23,7 @@
         log_dir: "{{ kafka_broker_log_dir }}"
       kafka_controller:
         name: kafka-controller
-        job: kafka_controller
+        job: kafka-controller
         port: "{{ kafka_controller_jmxexporter_port }}"
         log_dir: "{{ kafka_controller_log_dir }}"
       schema_registry:
