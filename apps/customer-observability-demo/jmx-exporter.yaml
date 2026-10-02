@@ -1,4 +1,5 @@
 # JMX Exporter rules for the demo application: custom order MBean, Kafka client metrics, a few JVM metrics.
+# GC metrics come from the exporter's built-in JVM collector (jvm_gc_collection_seconds_*).
 # Served on :9404 by the javaagent and scraped by the OTel gateway (prometheus/customer-app receiver).
 lowercaseOutputName: true
 lowercaseOutputLabelNames: true
@@ -51,8 +52,3 @@ rules:
   - pattern: 'java.lang<type=Threading><>ThreadCount'
     name: customer_jvm_threads
     type: GAUGE
-  - pattern: 'java.lang<type=GarbageCollector, name=(.+)><>CollectionCount'
-    name: customer_jvm_gc_collections_total
-    labels:
-      collector: '$1'
-    type: COUNTER

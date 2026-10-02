@@ -75,7 +75,7 @@
       "gridPos": {"h": 8, "w": 8, "x": 8, "y": 6},
       "id": 7,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
-      "targets": [{"expr": "rate(customer_jvm_gc_collections_total{job=\"customer-observability-demo\"}[5m])", "legendFormat": "{{collector}}", "refId": "A"}],
+      "targets": [{"expr": "rate(jvm_gc_collection_seconds_count{job=\"customer-observability-demo\"}[5m])", "legendFormat": "{{gc}}", "refId": "A"}],
       "title": "GC collections / second",
       "type": "timeseries"
     },

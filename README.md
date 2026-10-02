@@ -327,6 +327,23 @@ All tests query the real services. Nothing is simulated. Each test writes a JSON
 | `python3 scripts/dashboard-audit.py` | `make audit` | For each dashboard, which metric names exist in VictoriaMetrics. This explains empty panels. |
 | `./scripts/broker-failure.sh` | `make fault` | Stops broker3 for 45 s. `up{instance="broker3"}` drops to 0, and under-replicated partitions appear, then recover. |
 
+### Last tested
+
+On 2 October 2026, on an Ubuntu VM with Docker Engine, starting from an empty lab
+(`docker compose down --volumes`, then `./scripts/up.sh`, about 20 minutes):
+
+| Check | Result |
+|---|---|
+| cp-ansible installation (8 hosts) and OTel agent installation | no failed task |
+| `smoke.py`: phases 1 and 2 on all 8 CP hosts | passed |
+| `extended-smoke.py`: phases 3 and 4 | passed |
+| Dashboard audit (metric names found / referenced) | Kafka Topics 12/12, Customer Application 13/13, KIP-714 9/9, Schema Registry 10/11, KRaft 15/17, Kafka cluster 49/58, Kafka Connect 17/59 |
+
+Most missing metrics are expected in this lab. Kafka Connect has no connectors running (see
+[docs/CONNECT-EXERCISE.md](docs/CONNECT-EXERCISE.md)). A few upstream panels use metric names
+that the JMX Exporter 1.1 rules or CP 8.3 do not produce, for example `jvm_memory_bytes_max`.
+The full list is in `artifacts/dashboard-audit.json`.
+
 Other useful commands:
 
 ```bash

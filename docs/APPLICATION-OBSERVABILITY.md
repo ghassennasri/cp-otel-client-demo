@@ -33,7 +33,7 @@ Important series include:
 - `customer_orders_failed_total`
 - `customer_orders_processing_latency_ms`
 - `customer_jvm_heap_used_bytes`
-- `customer_jvm_gc_collections_total`
+- `jvm_gc_collection_seconds_count` (built-in JVM collector of JMX Exporter)
 - `customer_jvm_threads`
 - `kafka_producer_*` (all numeric producer MBean attributes)
 - `kafka_consumer_*` (all numeric consumer MBean attributes)

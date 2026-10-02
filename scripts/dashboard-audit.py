@@ -25,7 +25,8 @@ def queries(value):
 
 def main():
     data = request('http://localhost:8428/api/v1/label/__name__/values?' +
-                   urllib.parse.urlencode({'match[]': '{env=' + json.dumps(settings()['DEMO_ENV']) + '}'}))
+                   urllib.parse.urlencode([('match[]', '{env=' + json.dumps(settings()['DEMO_ENV']) + '}'),
+                                          ('match[]', '{telemetry_source="kip714"}')]))  # KIP-714 series have no env label
     if data.get('status') != 'success':
         raise RuntimeError(data)
     present = set(data['data'])
@@ -34,7 +35,7 @@ def main():
         dashboard = json.loads(path.read_text())
         required = set()
         for expression in queries(dashboard):
-            required.update(re.findall(r'\b(?:kafka|confluent|java_lang|jvm|jmx|process)_[A-Za-z0-9_:]+', expression))
+            required.update(re.findall(r'\b(?:org_apache_kafka|kip714|customer|kafka|confluent|java_lang|jvm|jmx|process)_[A-Za-z0-9_:]+', expression))
         result['dashboards'].append({'file': path.name, 'title': dashboard['title'],
             'referenced_metrics': len(required), 'present': sorted(required & present),
             'missing': sorted(required - present)})
