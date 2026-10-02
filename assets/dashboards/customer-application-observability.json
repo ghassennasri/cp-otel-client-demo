@@ -1,0 +1,171 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Application logs in OpenSearch",
+      "type": "link",
+      "url": "http://localhost:5601/app/data-explorer/discover#?_a=(discover:(columns:!(body,attributes.order_id,attributes.trace_id,severityText),metadata:(indexPattern:cp-logs,view:discover)))&_q=(query:(language:kuery,query:'resource.attributes.service.name:%22customer-orders-demo%22'))&_g=(time:(from:now-15m,to:now))"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "panels": [],
+      "title": "Application JMX metrics",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 1},
+      "id": 2,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "customer_orders_submitted_total{job=\"customer-observability-demo\"}", "legendFormat": "created", "refId": "A"}],
+      "title": "Orders created",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 1},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "customer_orders_processed_total{job=\"customer-observability-demo\"}", "legendFormat": "processed", "refId": "A"}],
+      "title": "Orders processed",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 1},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "customer_orders_failed_total{job=\"customer-observability-demo\"}", "legendFormat": "failed", "refId": "A"}],
+      "title": "Orders failed",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 1},
+      "id": 5,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+      "targets": [{"expr": "customer_orders_processing_latency_ms{job=\"customer-observability-demo\"}", "legendFormat": "processing", "refId": "A"}],
+      "title": "Processing latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 6},
+      "id": 6,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"expr": "customer_jvm_heap_used_bytes{job=\"customer-observability-demo\"}", "legendFormat": "used", "refId": "A"}, {"expr": "customer_jvm_heap_max_bytes{job=\"customer-observability-demo\"}", "legendFormat": "max", "refId": "B"}],
+      "title": "JVM heap",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 6},
+      "id": 7,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"expr": "rate(customer_jvm_gc_collections_total{job=\"customer-observability-demo\"}[5m])", "legendFormat": "{{collector}}", "refId": "A"}],
+      "title": "GC collections / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 6},
+      "id": 8,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+      "targets": [{"expr": "customer_jvm_threads{job=\"customer-observability-demo\"}", "legendFormat": "threads", "refId": "A"}],
+      "title": "JVM threads",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14},
+      "id": 9,
+      "panels": [],
+      "title": "Kafka client JMX metrics",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 15},
+      "id": 10,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"expr": "sum(kafka_producer_producer_topic_metrics_record_send_rate{job=\"customer-observability-demo\",topic=~\".+\"}) by (topic)", "legendFormat": "{{topic}}", "refId": "A"}],
+      "title": "Producer records / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 6, "y": 15},
+      "id": 11,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "kafka_producer_producer_metrics_record_error_rate{job=\"customer-observability-demo\"}", "legendFormat": "errors", "refId": "A"},
+        {"expr": "kafka_producer_producer_metrics_record_retry_rate{job=\"customer-observability-demo\"}", "legendFormat": "retries", "refId": "B"}
+      ],
+      "title": "Producer errors and retries / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 12, "y": 15},
+      "id": 12,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"expr": "sum(kafka_consumer_consumer_fetch_manager_metrics_records_consumed_rate{job=\"customer-observability-demo\",topic=~\".+\"}) by (topic)", "legendFormat": "{{topic}}", "refId": "A"}],
+      "title": "Consumer records / second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "cp-victoriametrics"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 18, "y": 15},
+      "id": 13,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"expr": "max(kafka_consumer_consumer_fetch_manager_metrics_records_lag{job=\"customer-observability-demo\",topic=~\".+\"}) by (topic)", "legendFormat": "{{topic}}", "refId": "A"}],
+      "title": "Consumer max lag",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22},
+      "id": 14,
+      "panels": [],
+      "title": "Application traces via OTLP",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "tempo", "uid": "cp-tempo"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 23},
+      "id": 15,
+      "options": {"showHeader": true},
+      "targets": [{"query": "{ resource.service.name = \"customer-orders-demo\" }", "queryType": "traceql", "refId": "A"}],
+      "title": "Recent order and Kafka traces",
+      "type": "table"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 41,
+  "tags": ["customer-application", "jmx", "kafka-client", "logs", "traces"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timezone": "browser",
+  "title": "Customer Application Observability",
+  "uid": "customer-observability",
+  "version": 1
+}

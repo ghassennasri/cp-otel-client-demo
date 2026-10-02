@@ -1,0 +1,30 @@
+{
+  "index_patterns": [
+    "cp-logs-*"
+  ],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "properties": {
+        "time": {
+          "type": "date_nanos"
+        },
+        "observedTimestamp": {
+          "type": "date_nanos"
+        },
+        "body": {
+          "type": "text"
+        },
+        "severityText": {
+          "type": "keyword"
+        },
+        "severityNumber": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

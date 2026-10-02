@@ -1,0 +1,336 @@
+{
+  "uid": "kip714-client-telemetry",
+  "title": "Kafka Client Telemetry (KIP-714)",
+  "description": "Kafka client metrics pushed to the broker with KIP-714 and forwarded to OpenTelemetry by the broker plugin.",
+  "tags": [
+    "kip-714",
+    "kafka-clients",
+    "opentelemetry"
+  ],
+  "editable": true,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "id": null,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Broker plugin (ClientOtlpMetricsReporter)",
+      "id": 1,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Payloads per second, all brokers",
+      "description": "PushTelemetry payloads received by the broker plugin and exported to the OpenTelemetry Collector. Failed or dropped should stay at 0.",
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cp-victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "sum(rate(kip714_reporter_payloads_received_total[2m]))",
+          "legendFormat": "received",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "sum(rate(kip714_reporter_payloads_exported_total[2m]))",
+          "legendFormat": "exported",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "sum(rate(kip714_reporter_payloads_failed_total[2m]))",
+          "legendFormat": "failed",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "sum(rate(kip714_reporter_payloads_dropped_total[2m]))",
+          "legendFormat": "dropped",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Producer metrics pushed by the client (KIP-714)",
+      "id": 3,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Record send rate",
+      "description": "org.apache.kafka.producer.record.send.rate, pushed by the producer itself.",
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cp-victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "org_apache_kafka_producer_record_send_rate{telemetry_source=\"kip714\",client_id=~\"$client_id\"}",
+          "legendFormat": "{{client_id}} {{client_instance_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request latency (avg / max)",
+      "description": "Producer request latency as seen by the client.",
+      "id": 5,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cp-victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "org_apache_kafka_producer_request_latency_avg{telemetry_source=\"kip714\",client_id=~\"$client_id\"}",
+          "legendFormat": "avg {{client_instance_id}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "org_apache_kafka_producer_request_latency_max{telemetry_source=\"kip714\",client_id=~\"$client_id\"}",
+          "legendFormat": "max {{client_instance_id}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Consumer metrics pushed by the client (KIP-714)",
+      "id": 6,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Records consumed rate",
+      "description": "org.apache.kafka.consumer.fetch.manager.records.consumed.rate",
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cp-victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "org_apache_kafka_consumer_fetch_manager_records_consumed_rate{telemetry_source=\"kip714\",client_id=~\"$client_id\"}",
+          "legendFormat": "{{client_id}} {{client_instance_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumer lag (max)",
+      "description": "org.apache.kafka.consumer.fetch.manager.records.lag.max, computed by the consumer.",
+      "id": 8,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cp-victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cp-victoriametrics"
+          },
+          "expr": "org_apache_kafka_consumer_fetch_manager_records_lag_max{telemetry_source=\"kip714\",client_id=~\"$client_id\"}",
+          "legendFormat": "{{client_id}} {{client_instance_id}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "client_id",
+        "label": "client.id",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "cp-victoriametrics"
+        },
+        "query": {
+          "query": "label_values({telemetry_source=\"kip714\"}, client_id)",
+          "refId": "client_id"
+        },
+        "definition": "label_values({telemetry_source=\"kip714\"}, client_id)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "refresh": 2,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      }
+    ]
+  }
+}

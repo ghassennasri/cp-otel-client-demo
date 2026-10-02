@@ -1,0 +1,26 @@
+# Data Prepper pipeline: OTLP logs from the OTel gateway -> one OpenSearch index per day.
+#
+#   OTel gateway --OTLP/gRPC :21892--> [otel_logs_source] -> [buffer] -> [opensearch sink]
+#
+# Documents keep the OpenTelemetry log structure: body, severityText, time,
+# resource.attributes.* (service.name, host.name, ...) and attributes.* (log.file.name, ...).
+cp-logs:
+  workers: 2
+  delay: 1000
+  source:
+    otel_logs_source:
+      port: 21892
+      ssl: false          # lab only
+      compression: none
+      output_format: otel
+  # In-memory buffer (lab). If it is full, Data Prepper rejects the request and the gateway
+  # retries from its persistent queue. A crash of Data Prepper loses what is in this buffer.
+  buffer:
+    bounded_blocking:
+      buffer_size: 10000
+      batch_size: 512
+  sink:
+    - opensearch:
+        hosts: ["http://opensearch:9200"]
+        index_type: custom
+        index: "cp-logs-%{yyyy.MM.dd}"

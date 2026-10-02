@@ -1,0 +1,58 @@
+# JMX Exporter rules for the demo application: custom order MBean, Kafka client metrics, a few JVM metrics.
+# Served on :9404 by the javaagent and scraped by the OTel gateway (prometheus/customer-app receiver).
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+rules:
+  - pattern: 'com.demo.orders<type=OrderMetrics><>OrdersCreated'
+    # Not "..._created_total": "_created" is a reserved OpenMetrics suffix and would be dropped.
+    name: customer_orders_submitted_total
+    type: COUNTER
+  - pattern: 'com.demo.orders<type=OrderMetrics><>OrdersProcessed'
+    name: customer_orders_processed_total
+    type: COUNTER
+  - pattern: 'com.demo.orders<type=OrderMetrics><>OrdersFailed'
+    name: customer_orders_failed_total
+    type: COUNTER
+  - pattern: 'com.demo.orders<type=OrderMetrics><>ProcessingLatencyMs'
+    name: customer_orders_processing_latency_ms
+    type: GAUGE
+  - pattern: 'kafka.(producer|consumer)<type=app-info, client-id=(.+)><>(.+): (.+)'
+    name: kafka_$1_app_info
+    value: 1
+    labels:
+      client_id: '$2'
+      '$3': '$4'
+    type: UNTYPED
+  - pattern: 'kafka.(producer|consumer)<type=(.+), (.+)=(.+), (.+)=(.+), (.+)=(.+)><>(.+):'
+    name: kafka_$1_$2_$9
+    labels:
+      '$3': '$4'
+      '$5': '$6'
+      '$7': '$8'
+    type: GAUGE
+  - pattern: 'kafka.(producer|consumer)<type=(.+), (.+)=(.+), (.+)=(.+)><>(.+):'
+    name: kafka_$1_$2_$7
+    labels:
+      '$3': '$4'
+      '$5': '$6'
+    type: GAUGE
+  - pattern: 'kafka.(producer|consumer)<type=(.+), (.+)=(.+)><>(.+):'
+    name: kafka_$1_$2_$5
+    labels:
+      '$3': '$4'
+    type: GAUGE
+  - pattern: 'kafka.(producer|consumer)<type=(.+)><>(.+):'
+    name: kafka_$1_$2_$3
+    type: GAUGE
+  - pattern: 'kafka.(producer|consumer)<.*'
+  - pattern: 'java.lang<type=Memory><HeapMemoryUsage>(used|max)'
+    name: customer_jvm_heap_$1_bytes
+    type: GAUGE
+  - pattern: 'java.lang<type=Threading><>ThreadCount'
+    name: customer_jvm_threads
+    type: GAUGE
+  - pattern: 'java.lang<type=GarbageCollector, name=(.+)><>CollectionCount'
+    name: customer_jvm_gc_collections_total
+    labels:
+      collector: '$1'
+    type: COUNTER

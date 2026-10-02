@@ -1,0 +1,7 @@
+{
+  "vendor/LICENSE-jmx-monitoring-stacks": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+  "vendor/jmx-exporter/confluent_schemaregistry.yml": "b3f02cd957e9ed3f87409550f6525575d719e26060e23ba2942efa3b7e109e87",
+  "vendor/jmx-exporter/kafka_broker.yml": "3549d238fdcb3ff88cef3d800136462cbb532d48341ca224b9168afd3bdd077a",
+  "vendor/jmx-exporter/kafka_connect.yml": "0eeb25a65af4e12513edbe5804884c48ba02dd027645862f0ab5f7aca629b75a",
+  "vendor/jmx-exporter/kafka_controller.yml": "46ff997447842970a5d152b7fcee7b1e53c3c7047912ddfca4d80785ad6848c6"
+}

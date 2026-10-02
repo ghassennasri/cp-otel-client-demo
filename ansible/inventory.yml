@@ -1,0 +1,133 @@
+# cp-ansible inventory for the demo lab.
+#
+# This is a normal cp-ansible inventory. The only demo-specific parts are:
+#   - the Docker connection (instead of SSH),
+#   - the reduced JVM heaps,
+#   - a few variables shared with the OTel agent (ports, log directories, labels).
+# In a real environment, keep your existing inventory and add the "Shared with the OTel agent"
+# and "JMX Exporter" sections.
+all:
+  vars:
+    # --- Lab connection: Ansible talks to the containers through the Docker socket. ---
+    # In production use your approved SSH/PAM access instead.
+    ansible_connection: community.docker.docker
+    ansible_user: root
+    ansible_python_interpreter: /usr/bin/python3
+    custom_java_path: /usr/lib/jvm/java-21-openjdk-amd64
+
+    # --- Confluent Platform installation ---
+    confluent_package_version: 8.3.2
+    installation_method: package
+    kraft_enabled: true
+    ssl_enabled: false      # lab only
+    sasl_protocol: none     # lab only
+    rbac_enabled: false
+    jolokia_enabled: false
+    kafka_broker_rest_proxy_enabled: false
+
+    # --- Labels shared with the OTel agent and the dashboards ---
+    # Values come from .env (DEMO_ENV, DEMO_CLUSTER_NAME). "env" is the selector used by
+    # the Confluent Grafana dashboards.
+    env: "{{ lookup('ansible.builtin.env', 'DEMO_ENV', default='demo') }}"
+    confluent_cluster_name: "{{ lookup('ansible.builtin.env', 'DEMO_CLUSTER_NAME', default='cp-demo') }}"
+    # cp-ansible variable; also used as the kafka_connect_cluster_id label for the Connect dashboard.
+    kafka_connect_group_id: "{{ env }}-connect"
+
+    # --- Shared with the OTel agent (ansible/templates/agent.yaml.j2) ---
+    otel_gateway_endpoint: otel-gateway:4317
+    otel_log_start_at: beginning   # "beginning" reads existing log files on first start
+    otel_log_timezone: UTC         # timezone of the timestamps written by Log4j
+    # One JMX Exporter port per component: cp-ansible starts the exporter on it,
+    # the local OTel agent scrapes it on 127.0.0.1.
+    kafka_broker_jmxexporter_port: 8080
+    kafka_controller_jmxexporter_port: 8079
+    schema_registry_jmxexporter_port: 8078
+    kafka_connect_jmxexporter_port: 8077
+    # Log directories: CP writes there, the OTel agent reads there.
+    kafka_broker_log_dir: /var/log/kafka
+    kafka_controller_log_dir: /var/log/controller
+    schema_registry_log_dir: /var/log/confluent/schema-registry
+    kafka_connect_log_dir: /var/log/kafka
+
+    # --- JMX Exporter: cp-ansible downloads the agent and installs the rule files ---
+    # The rule files come from confluentinc/jmx-monitoring-stacks (see vendor/jmx-exporter).
+    jmxexporter_enabled: true
+    jmxexporter_version: 1.1.0
+    jmxexporter_jar_path: /opt/prometheus/jmx_prometheus_javaagent.jar
+    jmxexporter_jar_url: https://github.com/prometheus/jmx_exporter/releases/download/1.1.0/jmx_prometheus_javaagent-1.1.0.jar
+    kafka_broker_jmxexporter_config_source_path: /demo/vendor/jmx-exporter/kafka_broker.yml
+    kafka_controller_jmxexporter_config_source_path: /demo/vendor/jmx-exporter/kafka_controller.yml
+    schema_registry_jmxexporter_config_source_path: /demo/vendor/jmx-exporter/confluent_schemaregistry.yml
+    kafka_connect_jmxexporter_config_source_path: /demo/vendor/jmx-exporter/kafka_connect.yml
+
+    # --- Lab sizing: small heaps, no kernel tuning on the shared Docker host ---
+    kafka_broker_sysctl: {}
+    kafka_controller_sysctl: {}
+    required_total_memory_mb_kafka_broker: 2000
+    required_total_memory_mb_kafka_controller: 1500
+    # The overrides below only change the heap. KAFKA_OPTS keeps the Java options computed by
+    # cp-ansible (this includes the JMX Exporter javaagent), and LOG_DIR keeps the log location.
+    kafka_broker_service_environment_overrides:
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx1g
+      KAFKA_OPTS: '{{ kafka_broker_final_java_args | confluent.platform.java_arg_build_out }}'
+      KAFKA_LOG4J_OPTS: -Dlog4j2.configurationFile=file:{{ kafka_broker.log4j_file }}
+      LOG_DIR: '{{ kafka_broker_log_dir }}'
+    kafka_controller_service_environment_overrides:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx768m
+      KAFKA_OPTS: '{{ kafka_controller_final_java_args | confluent.platform.java_arg_build_out }}'
+      KAFKA_LOG4J_OPTS: -Dlog4j2.configurationFile=file:{{ kafka_controller.log4j_file }}
+      LOG_DIR: '{{ kafka_controller_log_dir }}'
+    kafka_connect_service_environment_overrides:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx768m
+      KAFKA_OPTS: '{{ kafka_connect_final_java_args | confluent.platform.java_arg_build_out }}'
+      KAFKA_LOG4J_OPTS: -Dlog4j2.configurationFile=file:{{ kafka_connect.log4j_file }}
+      LOG_DIR: '{{ kafka_connect_log_dir }}'
+
+    # --- KIP-714 (optional): broker plugin that forwards client metrics to OpenTelemetry ---
+    # The plugin JAR is copied to /usr/share/java/kafka by docker/node.Dockerfile.
+    # Add your existing reporters to demo_existing_metric_reporters so they are kept.
+    demo_existing_metric_reporters: []
+    kip714_reporter_class: com.demo.kip714.ClientOtlpMetricsReporter
+
+    kafka_broker_custom_properties:
+      # KIP-714: register the plugin and let the broker hand client metrics to it.
+      metric.reporters: '{{ (demo_existing_metric_reporters + [kip714_reporter_class]) | unique | join(",") }}'
+      confluent.telemetry.external.client.metrics.push.enabled: true
+      client.telemetry.otlp.endpoint: '{{ otel_gateway_endpoint }}'
+      telemetry.max.bytes: 1048576
+      # Rack awareness: one broker per logical rack (simulated on a single Docker host).
+      broker.rack: '{{ demo_rack }}'
+      # Durability settings close to a typical production cluster.
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      num.partitions: 6
+      auto.create.topics.enable: 'false'
+      num.network.threads: 3
+      num.io.threads: 4
+    kafka_connect_custom_properties:
+      config.storage.replication.factor: 3
+      offset.storage.replication.factor: 3
+      status.storage.replication.factor: 3
+
+  # --- Hosts: one CP role per host (the OTel playbook checks this) ---
+  # ansible_host is the Docker container name; demo_rack becomes broker.rack and a "rack" label.
+  children:
+    kafka_controller:
+      hosts:
+        controller1: {ansible_host: cp-otel-controller1, demo_rack: rack-1}
+        controller2: {ansible_host: cp-otel-controller2, demo_rack: rack-2}
+        controller3: {ansible_host: cp-otel-controller3, demo_rack: rack-3}
+    kafka_broker:
+      hosts:
+        broker1: {ansible_host: cp-otel-broker1, demo_rack: rack-1}
+        broker2: {ansible_host: cp-otel-broker2, demo_rack: rack-2}
+        broker3: {ansible_host: cp-otel-broker3, demo_rack: rack-3}
+    schema_registry:
+      hosts:
+        schema1: {ansible_host: cp-otel-schema1, demo_rack: rack-1}
+    kafka_connect:
+      hosts:
+        connect1: {ansible_host: cp-otel-connect1, demo_rack: rack-1}

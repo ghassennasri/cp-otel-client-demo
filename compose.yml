@@ -1,0 +1,242 @@
+# Confluent Platform + OpenTelemetry demo lab.
+#
+# Two kinds of services:
+#   1. "CP hosts": plain Ubuntu + systemd containers. They behave like VMs. Confluent Platform
+#      is installed on them by cp-ansible (ansible/deploy-cp.yml) and an OTel agent is
+#      installed next to each CP service (ansible/deploy-otel.yml). Nothing CP-related is baked
+#      into the image except the optional KIP-714 broker plugin JAR.
+#   2. Backends and demo apps: OTel gateway, VictoriaMetrics, Grafana, Tempo, Data Prepper,
+#      OpenSearch, and two small Java applications.
+#
+# Names used as labels everywhere (Grafana "env" selector, OpenSearch resource attributes)
+# come from .env: DEMO_ENV and DEMO_CLUSTER_NAME. See .env.example.
+#
+# All UI ports are published on 127.0.0.1 only.
+name: cp-otel-demo
+
+# Common definition of a CP host ("VM-like" systemd container).
+x-cp-host: &cp-host
+  build:
+    context: .
+    dockerfile: docker/node.Dockerfile
+  image: cp-otel-demo-node:8.3.2
+  # systemd needs a privileged container with the host cgroup namespace (lab only).
+  privileged: true
+  cgroup: host
+  tmpfs:
+    - /run
+    - /run/lock
+    # "exec" is required: Kafka extracts native libraries (zstd, snappy) to /tmp.
+    # Docker mounts tmpfs with noexec by default, which breaks zstd compression on brokers.
+    - /tmp:exec,mode=1777
+  stop_grace_period: 60s
+  networks: [demo]
+
+services:
+  # --- Confluent Platform hosts: 3 KRaft controllers, 3 brokers, Schema Registry, Connect ---
+  # Each host has its own volume for the OTel agent state (file offsets + persistent queue).
+  controller1:
+    <<: *cp-host
+    container_name: cp-otel-controller1
+    hostname: controller1
+    volumes: [/sys/fs/cgroup:/sys/fs/cgroup:rw, controller1-otel:/var/lib/otelcol-contrib]
+  controller2:
+    <<: *cp-host
+    container_name: cp-otel-controller2
+    hostname: controller2
+    volumes: [/sys/fs/cgroup:/sys/fs/cgroup:rw, controller2-otel:/var/lib/otelcol-contrib]
+  controller3:
+    <<: *cp-host
+    container_name: cp-otel-controller3
+    hostname: controller3
+    volumes: [/sys/fs/cgroup:/sys/fs/cgroup:rw, controller3-otel:/var/lib/otelcol-contrib]
+  broker1:
+    <<: *cp-host
+    container_name: cp-otel-broker1
+    hostname: broker1
+    volumes: [/sys/fs/cgroup:/sys/fs/cgroup:rw, broker1-otel:/var/lib/otelcol-contrib]
+  broker2:
+    <<: *cp-host
+    container_name: cp-otel-broker2
+    hostname: broker2
+    volumes: [/sys/fs/cgroup:/sys/fs/cgroup:rw, broker2-otel:/var/lib/otelcol-contrib]
+  broker3:
+    <<: *cp-host
+    container_name: cp-otel-broker3
+    hostname: broker3
+    volumes: [/sys/fs/cgroup:/sys/fs/cgroup:rw, broker3-otel:/var/lib/otelcol-contrib]
+  schema1:
+    <<: *cp-host
+    container_name: cp-otel-schema1
+    hostname: schema1
+    volumes: [/sys/fs/cgroup:/sys/fs/cgroup:rw, schema1-otel:/var/lib/otelcol-contrib]
+    ports: ["127.0.0.1:8081:8081"]
+  connect1:
+    <<: *cp-host
+    container_name: cp-otel-connect1
+    hostname: connect1
+    volumes: [/sys/fs/cgroup:/sys/fs/cgroup:rw, connect1-otel:/var/lib/otelcol-contrib]
+    ports: ["127.0.0.1:8083:8083"]
+
+  # --- Ansible runner (cp-ansible 8.3.2). Used with "docker compose run --rm ansible <playbook>".
+  # It reaches the CP hosts through the Docker connection plugin, so no SSH is needed in the lab.
+  ansible:
+    build:
+      context: .
+      dockerfile: docker/runner.Dockerfile
+    profiles: [tools]
+    environment:
+      DEMO_ENV: ${DEMO_ENV:-demo}
+      DEMO_CLUSTER_NAME: ${DEMO_CLUSTER_NAME:-cp-demo}
+    volumes:
+      - .:/demo:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [demo]
+
+  # --- OpenTelemetry gateway: receives OTLP from all agents and routes each signal ---
+  # metrics -> VictoriaMetrics, logs -> Data Prepper -> OpenSearch, traces -> Tempo.
+  otel-gateway:
+    image: otel/opentelemetry-collector-contrib:0.162.0-amd64
+    user: 0:0  # lab only: lets the collector create its state directory in the named volume
+    command: [--config=/etc/otelcol/config.yaml]
+    environment:
+      GOMEMLIMIT: 1200MiB
+      DEMO_ENV: ${DEMO_ENV:-demo}
+      DEMO_CLUSTER_NAME: ${DEMO_CLUSTER_NAME:-cp-demo}
+    volumes:
+      - ./config/otel/gateway.yaml:/etc/otelcol/config.yaml:ro
+      - customer-app-logs:/var/log/customer-demo:ro  # log file of the demo application
+      - gateway-state:/var/lib/otelcol-contrib       # persistent export queues
+    ports: ["127.0.0.1:13133:13133"]  # health check
+    networks: [demo]
+    restart: unless-stopped
+
+  # --- Metrics backend (Prometheus-compatible) ---
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.153.0
+    command: [-storageDataPath=/storage, -retentionPeriod=7d]
+    volumes: [vm-data:/storage]
+    ports: ["127.0.0.1:8428:8428"]
+    networks: [demo]
+    restart: unless-stopped
+
+  # --- Dashboards: VictoriaMetrics and Tempo data sources are provisioned from config/grafana ---
+  grafana:
+    image: grafana/grafana:13.2.3
+    environment:
+      GF_SECURITY_ADMIN_USER: demo
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Run scripts/configure.sh first}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./assets/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["127.0.0.1:3000:3000"]
+    networks: [demo]
+    restart: unless-stopped
+
+  # --- Trace backend (optional part of the demo) ---
+  tempo:
+    image: grafana/tempo:2.8.2
+    command: [-config.file=/etc/tempo/tempo.yaml]
+    volumes:
+      - ./config/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports: ["127.0.0.1:3200:3200"]
+    networks: [demo]
+    restart: unless-stopped
+
+  # --- Log backend: Data Prepper receives OTLP logs and indexes them into OpenSearch ---
+  data-prepper:
+    image: opensearchproject/data-prepper:2.16.0
+    environment:
+      JAVA_OPTS: -Xms256m -Xmx512m
+    volumes:
+      - ./config/data-prepper/pipelines.yaml:/usr/share/data-prepper/pipelines/pipelines.yaml:ro
+      - ./config/data-prepper/data-prepper-config.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml:ro
+    networks: [demo]
+    restart: unless-stopped
+  opensearch:
+    image: opensearchproject/opensearch:3.8.0
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: 'true'
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      DISABLE_SECURITY_PLUGIN: 'true'  # lab only
+      OPENSEARCH_JAVA_OPTS: -Xms1g -Xmx1g
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+      nofile: {soft: 65536, hard: 65536}
+    volumes: [opensearch-data:/usr/share/opensearch/data]
+    ports: ["127.0.0.1:9200:9200"]
+    networks: [demo]
+    restart: unless-stopped
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.8.0
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: 'true'  # lab only
+    ports: ["127.0.0.1:5601:5601"]
+    networks: [demo]
+    restart: unless-stopped
+
+  # --- Demo application 1: classic application observability (JMX metrics, JSON logs, traces) ---
+  customer-observability-demo:
+    build:
+      context: .
+      dockerfile: apps/customer-observability-demo/Dockerfile
+    image: cp-otel-customer-observability-demo:1.0.0
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: broker1:9092,broker2:9092,broker3:9092
+      APP_LOG_PATH: /var/log/customer-demo/application.log
+      # Two Java agents, no code change needed for either:
+      #  - JMX Exporter exposes JMX metrics on :9404 (scraped by the gateway)
+      #  - OpenTelemetry Java agent sends traces over OTLP to the gateway
+      JAVA_TOOL_OPTIONS: >-
+        -javaagent:/opt/agents/jmx_prometheus_javaagent.jar=9404:/etc/customer-demo/jmx-exporter.yaml
+        -javaagent:/opt/agents/opentelemetry-javaagent.jar
+      OTEL_SERVICE_NAME: customer-orders-demo
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=cp-otel-demo,deployment.environment.name=${DEMO_ENV:-demo},confluent.cluster.name=${DEMO_CLUSTER_NAME:-cp-demo}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-gateway:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none  # metrics come from JMX, see above
+      OTEL_LOGS_EXPORTER: none     # logs come from the JSON file, read by the gateway
+      OTEL_PROPAGATORS: tracecontext,baggage
+      OTEL_INSTRUMENTATION_KAFKA_EXPERIMENTAL_SPAN_ATTRIBUTES: 'true'
+    volumes: [customer-app-logs:/var/log/customer-demo]
+    ports: ["127.0.0.1:8088:8080", "127.0.0.1:9404:9404"]
+    networks: [demo]
+    restart: unless-stopped
+
+  # --- Demo application 2: KIP-714 client telemetry (no OpenTelemetry agent or SDK at all) ---
+  kip714-demo:
+    build:
+      context: .
+      dockerfile: apps/kip714-demo/Dockerfile
+    image: cp-otel-kip714-demo:1.0.0
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: broker1:9092,broker2:9092,broker3:9092
+    ports: ["127.0.0.1:8089:8080"]
+    networks: [demo]
+    restart: unless-stopped
+
+networks:
+  demo:
+    name: cp-otel-demo
+
+volumes:
+  controller1-otel: {}
+  controller2-otel: {}
+  controller3-otel: {}
+  broker1-otel: {}
+  broker2-otel: {}
+  broker3-otel: {}
+  schema1-otel: {}
+  connect1-otel: {}
+  gateway-state: {}
+  vm-data: {}
+  grafana-data: {}
+  opensearch-data: {}
+  tempo-data: {}
+  customer-app-logs: {}

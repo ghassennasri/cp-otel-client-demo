@@ -1,0 +1,29 @@
+# OPTIONAL example: scrape an EXISTING KMinion through the OpenTelemetry gateway.
+#
+# You do not need this if KMinion already sends its metrics to VictoriaMetrics:
+#
+#   KMinion -> VictoriaMetrics      (keep this flow unchanged)
+#
+# Use it only if you later want KMinion to go through the common OTel layer:
+#
+#   KMinion -> OTel gateway -> VictoriaMetrics
+#
+# How to use:
+#   1. Merge the receiver below into config/otel/gateway.yaml.
+#   2. Replace EXISTING-KMINION-HOST:8080 with your KMinion endpoint(s) and set your labels.
+#   3. Add "prometheus/kminion" to service.pipelines.metrics.receivers in gateway.yaml.
+#   4. Stop the old scrape of the same endpoint, so each series is ingested only once.
+#
+# This demo does not install KMinion.
+receivers:
+  prometheus/kminion:
+    trim_metric_suffixes: false
+    config:
+      scrape_configs:
+        - job_name: kminion
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["EXISTING-KMINION-HOST:8080"]
+              labels:
+                env: ${env:DEMO_ENV}
+                cluster: ${env:DEMO_CLUSTER_NAME}

@@ -1,0 +1,134 @@
+# OpenTelemetry Collector AGENT, one per Confluent Platform host (rendered by deploy-otel.yml).
+#
+#   CP JVM --JMX--> JMX Exporter (127.0.0.1:{{ otel_component.port }}) --scrape--> [prometheus receiver] --+
+#   CP log files ({{ otel_component.log_dir }})             --tail----> [filelog receiver]   --+--> OTLP --> gateway
+#
+# The agent only collects and forwards. Routing to the backends is done by the gateway
+# (config/otel/gateway.yaml), so backends can change without touching the CP hosts.
+
+receivers:
+  # --- Metrics: scrape the existing JMX Exporter endpoint, unchanged ---
+  prometheus:
+    # Keep metric names exactly as JMX Exporter writes them (e.g. "..._total"),
+    # otherwise the Confluent Grafana dashboards do not find them.
+    trim_metric_suffixes: false
+    config:
+      scrape_configs:
+        - job_name: {{ otel_component.job | to_json }}
+          scrape_interval: 15s
+          scrape_timeout: 10s
+          static_configs:
+            - targets: ["127.0.0.1:{{ otel_component.port }}"]
+              # These labels are used by the Confluent dashboards (env, job, instance)
+              # and are useful filters in any query.
+              labels:
+                env: {{ env | to_json }}
+                cluster: {{ confluent_cluster_name | to_json }}
+                component: {{ otel_component.name | to_json }}
+                rack: {{ demo_rack | default('unknown') | to_json }}
+{% if otel_component.name == 'kafka-connect' %}
+                kafka_connect_cluster_id: {{ kafka_connect_group_id | to_json }}
+{% endif %}
+          relabel_configs:
+            # instance = inventory host name (instead of 127.0.0.1:port).
+            - target_label: instance
+              replacement: {{ inventory_hostname | to_json }}
+
+  # --- Logs: tail the Log4j files written by the CP service ---
+  filelog/cp:
+    include: ["{{ otel_component.log_dir }}/*.log", "{{ otel_component.log_dir }}/*.log.*"]
+    # Compressed rotations cannot be read; GC logs have their own format and high volume.
+    exclude:
+      - "{{ otel_component.log_dir }}/*.gz"
+      - "{{ otel_component.log_dir }}/*.zip"
+      - "{{ otel_component.log_dir }}/*-gc.log*"
+    start_at: {{ otel_log_start_at }}
+    include_file_path: true
+    include_file_name: true
+    # Remember the read position of each file across agent restarts (file_storage extension).
+    storage: file_storage
+    max_log_size: 1MiB
+    force_flush_period: 2s
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0s
+    # A new record starts with a date, e.g. "[2026-10-02 13:10:01,123] INFO ...".
+    # Any other line (Java stack trace) is appended to the previous record.
+    multiline:
+      line_start_pattern: '^\[?\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}'
+    # Resource attributes identify the source in OpenSearch (resource.attributes.*).
+    resource:
+      service.name: {{ otel_component.name | to_json }}
+      service.namespace: confluent-platform
+      host.name: {{ inventory_hostname | to_json }}
+      deployment.environment.name: {{ env | to_json }}
+      confluent.cluster.name: {{ confluent_cluster_name | to_json }}
+      confluent.component: {{ otel_component.name | to_json }}
+    operators:
+      # Extract timestamp and severity from the standard CP Log4j layout.
+      # The full body is kept, including stack traces. Lines in another format pass through as-is.
+      - type: regex_parser
+        if: 'body matches "^\\[?[0-9]{4}-[0-9]{2}-[0-9]{2}"'
+        regex: '^\[?(?P<timestamp>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}[,.]\d{3})\]?\s+(?P<level>TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\b'
+        on_error: send
+        timestamp:
+          parse_from: attributes.timestamp
+          layout_type: gotime
+          layout: '2006-01-02 15:04:05.000'
+          location: {{ otel_log_timezone }}
+        severity:
+          parse_from: attributes.level
+
+processors:
+  # Protect the CP host: refuse data instead of growing beyond this memory.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  # Lines without a parsable timestamp get the time they were read, so they stay visible
+  # in time-based views (OpenSearch Discover) instead of being dated 1970.
+  transform/default-time:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - set(time, observed_time) where time_unix_nano == 0
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+extensions:
+  # Local disk state: file offsets and the persistent export queue.
+  file_storage:
+    directory: /var/lib/otelcol-contrib/storage
+    create_directory: true
+  health_check:
+    endpoint: 127.0.0.1:13133
+
+exporters:
+  # Everything goes to the gateway over OTLP/gRPC.
+  otlp/gateway:
+    endpoint: {{ otel_gateway_endpoint | to_json }}
+    tls:
+      insecure: true  # lab only: use TLS / mTLS in production
+    # Persistent queue on disk: data survives an agent restart or a gateway outage.
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      queue_size: 2000
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0s  # retry forever (bounded by the queue size)
+
+service:
+  extensions: [file_storage, health_check]
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/gateway]
+    logs:
+      receivers: [filelog/cp]
+      processors: [memory_limiter, transform/default-time, batch]
+      exporters: [otlp/gateway]

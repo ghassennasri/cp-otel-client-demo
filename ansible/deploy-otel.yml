@@ -1,0 +1,139 @@
+---
+# Install one OpenTelemetry Collector agent next to each Confluent Platform service.
+#
+# Run after deploy-cp.yml. For each host it:
+#   1. finds which CP component runs there (from the inventory group),
+#   2. creates a non-root "otelcol-contrib" user with read access to the CP log directory
+#      (ACLs, kept after log rotation),
+#   3. renders templates/agent.yaml.j2 and validates it with the collector binary,
+#   4. installs and starts a hardened systemd service.
+# The otelcol-contrib binary is already in the lab image (docker/node.Dockerfile).
+# On real hosts, install the official otelcol-contrib package first.
+- name: Install the OpenTelemetry agent on the CP hosts
+  hosts: kafka_broker:kafka_controller:schema_registry:kafka_connect
+  become: true
+  vars:
+    # Per CP component: name used in labels/logs, Prometheus job name expected by the
+    # Confluent dashboards, local JMX Exporter port, and log directory.
+    component_map:
+      kafka_broker:
+        name: kafka-broker
+        job: kafka-broker
+        port: "{{ kafka_broker_jmxexporter_port }}"
+        log_dir: "{{ kafka_broker_log_dir }}"
+      kafka_controller:
+        name: kafka-controller
+        job: kafka_controller
+        port: "{{ kafka_controller_jmxexporter_port }}"
+        log_dir: "{{ kafka_controller_log_dir }}"
+      schema_registry:
+        name: schema-registry
+        job: schema-registry
+        port: "{{ schema_registry_jmxexporter_port }}"
+        log_dir: "{{ schema_registry_log_dir }}"
+      kafka_connect:
+        name: kafka-connect
+        job: kafka-connect
+        port: "{{ kafka_connect_jmxexporter_port }}"
+        log_dir: "{{ kafka_connect_log_dir }}"
+  tasks:
+    - name: Require one CP role per demo host to prevent duplicate log harvesting
+      ansible.builtin.assert:
+        that: group_names | intersect(component_map.keys() | list) | length == 1
+    - name: Resolve this host's component
+      ansible.builtin.set_fact:
+        otel_component: "{{ component_map[(group_names | intersect(component_map.keys() | list))[0]] }}"
+    - name: Create service account
+      ansible.builtin.user:
+        name: otelcol-contrib
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+    - name: Create state and configuration paths
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: otelcol-contrib
+        group: otelcol-contrib
+        mode: '0750'
+      loop:
+        - /etc/otelcol-contrib
+        - /var/lib/otelcol-contrib
+        - /var/lib/otelcol-contrib/storage
+    - name: Require an existing CP log directory (run CP deployment first)
+      ansible.builtin.stat:
+        path: "{{ otel_component.log_dir }}"
+      register: cp_logs
+    - ansible.builtin.assert:
+        that: cp_logs.stat.isdir | default(false)
+    - name: Give read access to existing logs
+      ansible.posix.acl:
+        path: "{{ otel_component.log_dir }}"
+        entity: otelcol-contrib
+        etype: user
+        permissions: rX
+        recursive: true
+        state: present
+    - name: Keep read access after log rotation
+      ansible.posix.acl:
+        path: "{{ otel_component.log_dir }}"
+        entity: otelcol-contrib
+        etype: user
+        permissions: rX
+        default: true
+        recursive: true
+        state: present
+    - name: Allow traversal through parent log directories
+      ansible.posix.acl:
+        path: "{{ item }}"
+        entity: otelcol-contrib
+        etype: user
+        permissions: x
+        state: present
+      loop: "{{ ['/var/log', '/var/log/confluent'] if otel_component.log_dir.startswith('/var/log/confluent/') else ['/var/log'] }}"
+    - name: Render and validate OTel configuration before installation
+      ansible.builtin.template:
+        src: templates/agent.yaml.j2
+        dest: /etc/otelcol-contrib/config.yaml
+        owner: root
+        group: otelcol-contrib
+        mode: '0640'
+        validate: /usr/local/bin/otelcol-contrib validate --config=%s
+      notify: Restart otel
+    - name: Install systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/otelcol-contrib.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=OpenTelemetry CP metrics and logs agent
+          After=network-online.target
+          Wants=network-online.target
+          [Service]
+          User=otelcol-contrib
+          Group=otelcol-contrib
+          ExecStart=/usr/local/bin/otelcol-contrib --config=/etc/otelcol-contrib/config.yaml
+          Restart=on-failure
+          RestartSec=5
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ProtectHome=true
+          PrivateTmp=true
+          ReadWritePaths=/var/lib/otelcol-contrib
+          MemoryMax=384M
+          Environment=GOMEMLIMIT=230MiB
+          [Install]
+          WantedBy=multi-user.target
+      notify: Restart otel
+    - name: Start agent
+      ansible.builtin.systemd_service:
+        name: otelcol-contrib
+        enabled: true
+        daemon_reload: true
+        state: started
+  handlers:
+    - name: Restart otel
+      ansible.builtin.systemd_service:
+        name: otelcol-contrib
+        daemon_reload: true
+        state: restarted

@@ -1,0 +1,14 @@
+{
+  "cp_ansible": "8.3.2",
+  "confluent_platform": "8.3.2",
+  "otel": "0.162.0",
+  "otel_java_agent": "2.20.1",
+  "victoriametrics": "v1.153.0",
+  "grafana": "13.2.3",
+  "tempo": "2.8.2",
+  "opensearch": "3.8.0",
+  "data_prepper": "2.16.0",
+  "jmx_exporter": "1.1.0",
+  "kafka_client": "4.3.0",
+  "monitoring_commit": "f376263fc6d7270185ab6abab9a8c379079e2a92"
+}

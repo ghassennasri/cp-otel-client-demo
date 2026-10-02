@@ -1,0 +1,152 @@
+# OpenTelemetry Collector GATEWAY: the single routing point between sources and backends.
+#
+#   agents on CP hosts ──OTLP──┐
+#   KIP-714 broker plugin ─OTLP┤                    ┌─ metrics ─> VictoriaMetrics (remote write) ─> Grafana
+#   demo app traces ──────OTLP─┼─> [otlp receiver] ─┼─ logs ────> Data Prepper ─> OpenSearch
+#   demo app JMX (scrape) ─────┤                    └─ traces ──> Tempo ─> Grafana
+#   demo app log file (tail) ──┘
+#
+# To plug in another backend, only this file changes. CP hosts and applications are not touched.
+# ${env:DEMO_ENV} and ${env:DEMO_CLUSTER_NAME} come from .env through compose.yml.
+
+receivers:
+  # Main entry point: OTLP from the agents, the KIP-714 plugin and the OTel Java agent.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # --- Demo application only (see apps/customer-observability-demo) ---
+  # Scrape the JMX Exporter javaagent of the application, like the agents do for CP.
+  prometheus/customer-app:
+    trim_metric_suffixes: false
+    config:
+      scrape_configs:
+        - job_name: customer-observability-demo
+          scrape_interval: 15s
+          scrape_timeout: 10s
+          static_configs:
+            - targets: ["customer-observability-demo:9404"]
+              labels:
+                env: ${env:DEMO_ENV}
+                cluster: ${env:DEMO_CLUSTER_NAME}
+                component: customer-application
+                instance: customer-observability-demo
+
+  # Tail the JSON log file of the application (shared Docker volume).
+  # Each line is one JSON object; trace_id/span_id link the log to the Tempo trace.
+  filelog/customer-app:
+    include: ["/var/log/customer-demo/*.log"]
+    start_at: beginning
+    include_file_path: true
+    include_file_name: true
+    storage: file_storage
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0s
+    resource:
+      service.name: customer-orders-demo
+      service.namespace: cp-otel-demo
+      deployment.environment.name: ${env:DEMO_ENV}
+      confluent.cluster.name: ${env:DEMO_CLUSTER_NAME}
+      log.source: customer-application
+    operators:
+      - type: json_parser
+        parse_from: body
+        timestamp:
+          parse_from: attributes.timestamp
+          layout_type: gotime
+          layout: '2006-01-02T15:04:05.999999999Z07:00'
+        severity:
+          parse_from: attributes.level
+      - type: move
+        from: attributes.message
+        to: body
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1536
+    spike_limit_mib: 384
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  # Disk state for file offsets and persistent export queues.
+  file_storage:
+    directory: /var/lib/otelcol-contrib/storage
+    create_directory: true
+
+exporters:
+  # --- Metrics -> VictoriaMetrics, with Prometheus remote write ---
+  prometheus_remote_write/vm:
+    endpoint: http://victoriametrics:8428/api/v1/write
+    # Keep the original Prometheus names (no added "_total"/unit suffixes), so the existing
+    # Grafana dashboards keep working without change.
+    translation_strategy: UnderscoreEscapingWithoutSuffixes
+    # Turn resource attributes (job, instance, client_id, ...) into metric labels.
+    resource_to_telemetry_conversion:
+      enabled: true
+    target_info:
+      enabled: false
+    disable_scope_info: true
+    remote_write_queue:
+      enabled: true
+      queue_size: 10000
+      num_consumers: 1
+    max_batch_request_parallelism: 1
+    # Write-ahead log: buffered metrics survive a gateway restart.
+    wal:
+      directory: /var/lib/otelcol-contrib/prw-wal
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0s
+
+  # --- Logs -> Data Prepper (OTLP/gRPC), which writes to OpenSearch ---
+  otlp/data-prepper:
+    endpoint: data-prepper:21892
+    compression: none
+    tls:
+      insecure: true  # lab only
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      queue_size: 5000
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0s
+
+  # --- Traces -> Tempo (OTLP/gRPC) ---
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true  # lab only
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      queue_size: 2000
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0s
+
+service:
+  extensions: [health_check, file_storage]
+  pipelines:
+    metrics:
+      receivers: [otlp, prometheus/customer-app]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus_remote_write/vm]
+    logs:
+      receivers: [otlp, filelog/customer-app]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/data-prepper]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
