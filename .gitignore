@@ -4,3 +4,10 @@ __pycache__/
 artifacts/
 .venv/
 target/
+
+# Internal docs, kept locally only
+docs/PRODUCTION-NOTES.md
+docs/KIP-714.md
+docs/DEMO-RUNBOOK.md
+docs/CONNECT-EXERCISE.md
+docs/APPLICATION-OBSERVABILITY.md

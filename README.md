@@ -283,7 +283,7 @@ Application
   `prometheus/customer-app` and `filelog/customer-app` receivers of `config/otel/gateway.yaml`.
 
 **See it**: `./scripts/customer-traffic.sh` (or `make traces`), then open the Grafana dashboard
-**Customer Application Observability**. Details: [docs/APPLICATION-OBSERVABILITY.md](docs/APPLICATION-OBSERVABILITY.md).
+**Customer Application Observability**.
 
 *Application metrics (custom MBean, JVM, Kafka clients) and traces (Tempo) in one dashboard:*
 
@@ -332,7 +332,7 @@ kafka-client-metrics --bootstrap-server broker1:9092 --alter --name kip714-demo 
 ![Kafka Client Telemetry (KIP-714) dashboard](docs/images/grafana-kip714.png)
 
 > The broker plugin is **demo code**: plaintext gRPC, an in-memory queue and no retry. It is built
-> against the Kafka 4.3 plugin API (CP 8.3). Details: [docs/KIP-714.md](docs/KIP-714.md).
+> against the Kafka 4.3 plugin API (CP 8.3).
 
 ---
 
@@ -360,8 +360,8 @@ On 2 October 2026, on an Ubuntu VM with Docker Engine, starting from an empty la
 | `extended-smoke.py`: phases 3 and 4 | passed |
 | Dashboard audit (metric names found / referenced) | Kafka Topics 12/12, Customer Application 13/13, KIP-714 9/9, Schema Registry 10/11, KRaft 15/17, Kafka cluster 49/58, Kafka Connect 17/59 |
 
-Most missing metrics are expected in this lab. Kafka Connect has no connectors running (see
-[docs/CONNECT-EXERCISE.md](docs/CONNECT-EXERCISE.md)). A few upstream panels use metric names
+Most missing metrics are expected in this lab. Kafka Connect has no connectors running, so
+the per-connector and per-task panels stay empty. A few upstream panels use metric names
 that the JMX Exporter 1.1 rules or CP 8.3 do not produce, for example `jvm_memory_bytes_max`.
 The full list is in `artifacts/dashboard-audit.json`.
 
@@ -375,8 +375,6 @@ docker compose stop           # pause the lab (everything is kept); "docker comp
 
 `docker compose down` removes the CP host containers, so Confluent Platform must be installed
 again with `./scripts/up.sh`. `docker compose down --volumes` also deletes all metrics, logs and traces.
-
-A presenter script for a 30-minute session is in [docs/DEMO-RUNBOOK.md](docs/DEMO-RUNBOOK.md).
 
 ---
 
@@ -402,8 +400,8 @@ They are used by cp-ansible, the OTel agents, the gateway and the tests. Then ru
 5. For phase 4, build `plugins/client-telemetry-reporter` and copy the JAR to `/usr/share/java/kafka`
    on the brokers. This is optional and needs a broker restart.
 
-Before production, read [docs/PRODUCTION-NOTES.md](docs/PRODUCTION-NOTES.md): TLS, sizing,
-high availability, delivery guarantees and ownership.
+Before production, also decide on TLS, sizing, high availability, delivery guarantees and ownership
+(see [section 7](#7-lab-compared-with-production)).
 
 ---
 
@@ -436,7 +434,7 @@ high availability, delivery guarantees and ownership.
 ├── docker/                       CP host image (Ubuntu + systemd) and Ansible runner image
 ├── scripts/                      deploy, traffic, tests, diagnostics
 ├── tests/                        static checks and unit tests
-└── docs/                         details per topic, demo runbook, production notes, sources
+└── docs/                         screenshots (images/) and sources of the versions (SOURCES.md)
 ```
 
 ---
@@ -453,7 +451,6 @@ high availability, delivery guarantees and ownership.
 | All upstream JMX rules | A cardinality budget, with rules filtered to what dashboards and alerts use |
 | Data Prepper in-memory buffer | Check the buffering options of your Data Prepper version if logs must not be lost |
 
-Details, sizing method and failure scenarios: [docs/PRODUCTION-NOTES.md](docs/PRODUCTION-NOTES.md).
 
 ---
 
@@ -498,7 +495,7 @@ Phases 1 to 3 rely on JMX Exporter and log files, so they work the same way on o
 Metric names can change between CP releases: check the dashboards with `make audit` after an upgrade.
 
 - Sources of the versions and settings: [docs/SOURCES.md](docs/SOURCES.md)
-- Third-party files and licences: [NOTICE.md](NOTICE.md)
+
 
 **Support**: this is an integration example, not a Confluent product. Before production, confirm
 the support scope for each component of the chain (Confluent Platform, OpenTelemetry Collector,
