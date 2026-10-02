@@ -185,7 +185,7 @@ The **Confluent dashboards** from
 [jmx-monitoring-stacks](https://github.com/confluentinc/jmx-monitoring-stacks) need the same
 metric names and the `env`, `job` and `instance` labels as before. The settings above keep them,
 so the dashboards keep their **original PromQL queries**. Only their data source is set to
-VictoriaMetrics (and one variable is adjusted for dedicated KRaft controllers, see [NOTICE.md](NOTICE.md)).
+VictoriaMetrics (and one variable is adjusted for dedicated KRaft controllers).
 
 **See it**
 

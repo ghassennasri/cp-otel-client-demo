@@ -1,6 +1,6 @@
 # Sources and version provenance
 
-Sources consulted on 30 September and 1 October 2026. Version-specific source files take precedence over examples copied from an unrelated release.
+Version-specific source files take precedence over examples copied from an unrelated release.
 
 | Subject | Primary source | Use in this kit |
 |---|---|---|
